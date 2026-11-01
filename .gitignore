@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+.pytest_cache/
+.cache/
+
+data/*.sqlite*
+data/runtime-logs/
+data/reports/
+
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo

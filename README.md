@@ -41,11 +41,11 @@ tests/portfolio/       业务回归测试
 
 ## 演示
 
-![知识库：材料切块、双写一致性与检索自测](docs/screenshots/kb.png)
+![智能客服问答：退货政策咨询、证据引用与处理记录](docs/screenshots/chat.png)
 
-知识库页：顶部四个数字分别是知识块数、待向量化、Milvus 条数与双写一致性，下面按材料列出切块数、关键条款与切分特征。
+智能客服问答页：左侧切换历史咨询，中间展示用户提问与客服回答，右侧查看问题理解、识别意图和处理路径。图中展示退货政策问答、证据引用角标，以及右侧的问题理解、意图识别和处理路径。订单物流查询未提供订单号时，先通过订单卡片点选，再查询对应订单。商品与政策咨询支持知识检索和证据引用，证据不足时给出人工协助入口。
 
-其余三页（咨询 / 售后工作台 / 知识运营）见 [docs/screenshots](docs/screenshots)，本地演示流程见 [docs/walkthrough.md](docs/walkthrough.md)，架构与关键决策见 [docs/architecture.md](docs/architecture.md)。
+其余页面（售后工作台 / 知识运营 / 知识库）截图见 [docs/screenshots](docs/screenshots)，本地演示流程见 [docs/walkthrough.md](docs/walkthrough.md)，架构与关键决策见 [docs/architecture.md](docs/architecture.md)。
 
 ## 本地启动
 

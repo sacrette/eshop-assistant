@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import now, own_conversation
+from app.core.display import logistics_trace
 from app.db import base as db
 from app.db.commerce import Account, AfterSalesCase, CaseEvent, Order, Product
 
@@ -27,7 +28,7 @@ def order_view(order: Order, product: Product) -> dict:
             "status": order.status, "amount": order.amount_cents / 100,
             "created_at": order.created_at.isoformat(),
             "delivered_at": order.delivered_at.isoformat() if order.delivered_at else None,
-            "tracking_no": order.tracking_no, "logistics": order.logistics}
+            "tracking_no": order.tracking_no, "logistics": logistics_trace(order.logistics)}
 
 
 async def list_orders(user_id: str) -> list[dict]:

@@ -31,11 +31,13 @@ def _builder() -> StateGraph:
         "fallback_script": "script_reply",
         "knowledge": "retrieve_knowledge",
         "refund_flow": "fetch_order",
+        "logistics_flow": "fetch_order",
         "business": "main_agent",
     })
 
-    b.add_conditional_edges("fetch_order", lambda state: "cancel" if state.get("cancelled") else "continue",
-                            {"cancel": "cancel_reply", "continue": "retrieve_policy"})
+    b.add_conditional_edges("fetch_order", lambda state: "cancel" if state.get("cancelled") else
+                            ("policy" if state.get("route") == "refund_flow" else "agent"),
+                            {"cancel": "cancel_reply", "policy": "retrieve_policy", "agent": "main_agent"})
     b.add_edge("retrieve_policy", "main_agent")
 
     b.add_edge("retrieve_knowledge", "confidence_check")

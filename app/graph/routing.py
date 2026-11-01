@@ -10,7 +10,7 @@ INTENT_TO_ROUTE: dict[str, str] = {
     "退款退货": "refund_flow",
     "售后": "refund_flow",
     "人工": "business",
-    "物流": "business",
+    "物流": "logistics_flow",
     "订单": "business",
 }
 

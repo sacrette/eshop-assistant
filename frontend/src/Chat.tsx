@@ -315,7 +315,7 @@ export default function Chat({ user, status }: { user: User; status: SystemStatu
                 {[
                   '查询我的订单物流',
                   '商品收到后如何申请退货？',
-                  '这款猫砂盆的保修政策是什么？',
+                  '智能猫砂盆 Pro 的保修政策是什么？',
                 ].map((text) => (
                   <button key={text} onClick={() => setDraft(text)}>
                     <MessageSquare size={15} />
@@ -420,6 +420,30 @@ export default function Chat({ user, status }: { user: User; status: SystemStatu
                 >
                   查看申请
                 </button>
+              </div>
+            ))}
+          {actions
+            .filter((a) => a.type === 'select_order' && (a.orders?.length ?? 0) > 0)
+            .map((action, i) => (
+              <div className="confirmation" key={`orders-${i}`}>
+                <span className="quiet-label">你的订单</span>
+                <h3>要处理哪一笔订单？</h3>
+                <div className="selection-orders">
+                  {action.orders?.map((o) => (
+                    <button
+                      key={o.order_id}
+                      disabled={busy}
+                      onClick={() => void run({ order_id: o.order_id })}
+                    >
+                      <Package size={20} />
+                      <span>
+                        <strong>{o.product}</strong>
+                        <small>{o.order_id}</small>
+                      </span>
+                      <b>{money(o.amount)}</b>
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           {cid && actions.some((a) => ['transfer_human', 'create_ticket'].includes(a.type)) && (

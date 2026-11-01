@@ -35,7 +35,8 @@ async def lifespan(app: FastAPI):
     Path("data").mkdir(exist_ok=True)
     registry.scan_builtin()
     # 工具注册是硬性契约：少一个就拒绝启动，避免线上跑到一半才发现工具缺失。
-    expected = {"query_order", "query_product", "query_faq", "submit_refund", "create_ticket"}
+    expected = {"query_order", "list_orders", "query_product", "query_faq",
+                "submit_refund", "create_ticket"}
     if {tool.name for tool in registry.builtin_specs()} != expected:
         raise RuntimeError("业务工具注册不完整")
     await runtime.init_graph()

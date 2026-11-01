@@ -60,9 +60,9 @@ def _extract_order_id(text: str) -> str | None:
 
 async def fetch_order(state) -> dict:
     uid = state.get("user_id", "")
-    oid = state.get("order_id") or _extract_order_id(
-        state.get("resolved_query") or _user_text(state))
-    while not await business.owns_order(uid, str(oid or "")):
+    # 只信任本轮用户原文；历史状态和模型改写都不能代替用户选单。
+    oid = _extract_order_id(_user_text(state))
+    while not oid or not await business.owns_order(uid, str(oid)):
         orders = await business.list_user_orders(uid)
         if not orders:
             return {"order_id": "", "order_data": {}, "cancelled": True}
@@ -145,7 +145,10 @@ async def resolve_reference(state) -> dict:
 
 async def classify_intent(state) -> dict:
     query = state.get("resolved_query") or _user_text(state)
-    r = await intent_mod.classify(query, _history_text(state))
+    if re.search(r"(?:我要|我想|帮我|给我|申请|办理)\s*(?:申请)?\s*(?:退款|退货)", _user_text(state)):
+        r = {"intent": "退款退货", "confidence": 1.0}
+    else:
+        r = await intent_mod.classify(query, _history_text(state))
     intent, conf = r["intent"], r["confidence"]
     route = INTENT_TO_ROUTE.get(intent, "business")
     tag_intent(intent, conf)
@@ -211,6 +214,11 @@ def _turn_context(state) -> str:
         parts.append(_KNOWLEDGE_EVIDENCE_HINT + state["evidence"])
     if state.get("route") == "refund_flow":
         parts.append(REFUND_JUDGE_HINT + json.dumps(state.get("order_data", {}), ensure_ascii=False))
+    if state.get("route") == "logistics_flow":
+        parts.append("\n\n## 本轮物流查询的已确认订单\n"
+                     + json.dumps(state.get("order_data", {}), ensure_ascii=False)
+                     + "\n只查询本轮已确认的订单，调用 query_logistics 获取真实物流；"
+                     "不要再次列出全部订单或让用户重复提供订单号。未发货时如实说明，不编造物流轨迹。")
     return "".join(parts)
 
 
@@ -254,6 +262,10 @@ def _log_model_context(state, msgs) -> None:
 
 
 async def main_agent(state, config=None) -> dict:
+    if state.get("route") == "refund_flow" and not state.get("evidence", "").strip():
+        text = "暂时没有查到适用的退换货政策，无法判断这笔订单是否可以退款。请联系人工客服核实；当前尚未提交退款申请。"
+        return {"messages": [AIMessage(content=text)],
+                "suggested_actions": [{"type": "transfer_human"}]}
     specs = await registry.get_all_specs()
     model = get_chat_model(streaming=True).bind_tools([s.tool for s in specs])
     msgs = _agent_messages(state)
@@ -367,4 +379,6 @@ async def log_node(state) -> dict:
 
 
 async def cancel_reply(state) -> dict:
+    if state.get("route") == "logistics_flow":
+        return {"answer": "本次物流查询已结束。需要时可以重新选择订单查询。", "suggested_actions": []}
     return {"answer": "已结束本次订单选择，未提交售后申请。", "suggested_actions": []}

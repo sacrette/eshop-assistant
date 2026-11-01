@@ -4,6 +4,7 @@ import logging
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import settings
+from app.core.display import logistics_trace
 from app.tools import registry
 from app.tools.registry import ToolSpec
 
@@ -18,7 +19,7 @@ def _fmt_logistics(d: dict) -> dict:
     return {"tracking_no": d.get("tracking_no"),
             "status": _translate({"PICKED_UP": "已揽件", "IN_TRANSIT": "运输中",
                                   "DELIVERING": "派送中", "DELIVERED": "已签收"}, d.get("status_code")),
-            "current_city": d.get("current_city"), "trace": d.get("trace")}
+            "current_city": d.get("current_city"), "trace": logistics_trace(d.get("trace"))}
 
 
 def _fmt_warranty(d: dict) -> dict:

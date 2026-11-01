@@ -3,16 +3,18 @@ from datetime import datetime
 
 from app.db import base as db
 from app.db.commerce import Account, Order, Product
+from scripts.normalize_order_ids import migrate
 
 
 async def main() -> None:
     fixtures = [
-        ("1001", "seed-lp100", "智能猫砂盆", "已付款", 173900,
+        ("ES20260704001", "seed-lp100", "智能猫砂盆", "已付款", 173900,
          "2026-07-04 10:00", "SF213502378238"),
-        ("2002", "seed-wd200", "自动饮水机", "待付款", 155700,
+        ("ES20260707001", "seed-wd200", "自动饮水机", "待付款", 155700,
          "2026-07-07 10:00", "SF970058539216"),
     ]
     try:
+        await migrate()
         async with db.async_session() as session:
             if await session.get(Account, "customer-lin") is None:
                 raise RuntimeError("请先运行 scripts.init_demo")
@@ -28,7 +30,7 @@ async def main() -> None:
                                   created_at=datetime.strptime(created, "%Y-%m-%d %H:%M"),
                                   delivered_at=None, tracking_no=tracking, logistics=[]))
             await session.commit()
-        print("1001、2002 已导入林悦演示账号；保留快照中的状态与物流单号，未编造物流事件。")
+        print("ES20260704001、ES20260707001 已导入林悦演示账号；保留原始状态与物流单号。")
     finally:
         await db.engine.dispose()
 

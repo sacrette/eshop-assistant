@@ -31,4 +31,4 @@ Compose 使用四个显式命名的外部数据卷（mysql / milvus / etcd / min
 
 LangSmith 密钥只保存在后端 `.env`，不放入 Vite 环境变量或前端产物。`LANGSMITH_PROJECT` 必须与网页端选中的环境同名（本机为 `eshop-assistant-local`），只改 Agent ID 或环境变量都不足以让 trace 出现在对应页面。默认追踪关闭，缺少密钥时不影响业务运行。
 
-本地 SQLite 回归与前端构建成功，不等于 MySQL、模型上游、Milvus 或 LangSmith 云端已经验证。云端 trace、真实模型调用与 Milvus 检索需分别验收，记录见 [docs/validation.md](docs/validation.md)。
+本地 SQLite 回归与前端构建成功，不等于 MySQL、模型上游、Milvus 或 LangSmith 云端已经验证。云端 trace、真实模型调用与 Milvus 检索需分别验收，记录见 [docs/testing.md](docs/testing.md)。

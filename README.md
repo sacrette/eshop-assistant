@@ -1,112 +1,153 @@
 # Eshop Assistant
 
-电商客服工作台：把「咨询 → 查到依据 → 确认操作 → 售后处理 → 缺口回补」串成一条可追踪的链路，而不是一个只会聊天的对话框。判断有证据来源，写操作要用户确认，处理留时间线。
+**English** | [简体中文](README.zh-CN.md)
 
-三个角色各自闭环。用户（林悦 / 周然）带着订单提问，拿到带角标的证据，涉及写操作时先看到确认弹窗，提交售后后在「我的售后」看进度；客服（陈曦）在售后工作台核对订单与申请，批准或驳回、记录处理结果，读到别人的订单会被 404 挡掉；运营在知识运营页处理「检索没找到 / 自评没过 / 用户说没解决」三类缺口，审核答案、索引成功才发布，知识库页负责材料切块、入库与检索自测。
+An e-commerce support workspace built with FastAPI, LangGraph, and React. It connects evidence-backed answers, order lookup, human confirmation, after-sales review, and knowledge maintenance, with a timeline of business actions.
 
-几处刻意的取舍：
+This project is intended for local demos and engineering practice. The UI and sample knowledge are primarily in Chinese. The logistics, warranty, and after-sales MCP services use local demo data; they do not connect to real shipping or payment providers.
 
-- **证据不足就拒答**。置信度低于阈值时宁可说「没查到」，也不让模型凭印象编；被拒的问题进缺口池，成为下一轮补知识的输入。
-- **写操作不重试，靠幂等键兜底**。退款、建工单这类调用超时后重放可能重复下单，所以执行器对写操作只调一次，由 `(user_id, idempotency_key)` 唯一约束和内容指纹保证重放安全。
-- **售后状态用版本号而不是字段覆盖**。两个客服同时点批准，只有一个能拿到 `rowcount=1`，另一个收到 409 去刷新，而不是互相覆盖。
+![Support conversation with evidence citations and processing details](docs/screenshots/chat.png)
 
-## 当前能力
+## Features
 
-- 用户端：流式会话、证据引用、订单选择、工单确认与取消、售后申请、未解决反馈。
-- 客服端：售后申请队列、订单详情、审核意见、状态时间线、人工待办与相关对话。
-- 知识运营：三类缺口来源、问题归并、答案审核、索引失败重试、发布状态。
-- 知识库：材料切块预览与查重、入库、补齐向量、四策略检索自测、对话挖掘结果人工采纳。
-- 服务端：会话认证、CSRF 校验、订单与会话归属校验、幂等提交、售后状态版本控制、工具审计。
-- AI 核心：LangGraph 编排、interrupt/resume、混合检索与重排、证据置信度、异步滚动摘要。
-- 观测：LangSmith 回调、会话 thread_id 关联、按意图聚合根调用 token 用量；默认关闭。
+| Workflow | Capabilities |
+| --- | --- |
+| Customer support | Streaming conversations, evidence citations, order selection, confirmation and cancellation of write actions, after-sales requests, unresolved-answer feedback |
+| Support operations | Request queue, order details, review notes, status timeline, human tasks, linked conversations |
+| Knowledge operations | Collect retrieval gaps, failed self-checks, and unresolved feedback; group questions, review answers, retry indexing, and publish knowledge |
+| Knowledge management | Chunk preview and deduplication, ingestion, vector backfill, retrieval checks, human acceptance of knowledge mined from conversations |
 
-## 目录
+More screenshots: [after-sales workspace](docs/screenshots/cases.png) · [knowledge operations](docs/screenshots/knowledge.png) · [knowledge base](docs/screenshots/kb.png).
 
-```text
-frontend/src/          React + TypeScript 页面、API 客户端和视觉样式
-app/api/               认证、会话、订单售后、知识审核 API
-app/core/              业务状态、身份认证、知识发布、检索与观测
-app/graph/             LangGraph 状态、路由、节点与持久化恢复
-app/db/                SQLAlchemy 模型与数据库会话
-app/tools/             内置工具、统一执行器、MCP 客户端
-mcp_servers/           物流与售后两个独立服务
-docs/architecture.md   组成、一次咨询的链路与关键决策
-docs/roadmap.md        范围、技术决策、里程碑与暂缓项
-docs/testing.md        测试入口、当前结果、已知失败与限制
-docs/walkthrough.md    本地演示流程
-CHANGELOG.md           变更记录
-scripts/init_demo.py   建表与幂等演示数据初始化
-tests/portfolio/       业务回归测试
+## Stack and design
+
+- **Application**: React 19, TypeScript, Vite; FastAPI, SQLAlchemy, MySQL.
+- **Agent and retrieval**: LangGraph interrupt/resume, SQLite checkpoints, Milvus hybrid retrieval and reranking, asynchronous rolling summaries.
+- **Evidence gating**: Route knowledge answers using retrieval confidence. Weak evidence leads to abstention or human assistance, and gaps feed the knowledge review workflow. This does not guarantee that model outputs are always correct.
+- **Tool execution**: Validate arguments, require confirmation for write tools, inject server-owned identity, check order ownership, and record audits. Write tools are not automatically retried; business submissions use idempotency keys and content fingerprints to handle repeated requests.
+- **Consistency**: Versioned after-sales updates detect concurrent changes and return HTTP 409 on conflict. Knowledge is published only after indexing succeeds, with retries for failures.
+- **Access control**: Session authentication, CSRF checks, and order and conversation ownership checks.
+- **Optional observability**: LangSmith traces, conversation correlation, and root-run token usage grouped by intent. Disabled by default.
+
+See [architecture.md](docs/architecture.md) for components and request flows.
+
+## First-time setup
+
+Prerequisites: Python 3.12+, uv, Node.js 22 with npm, Docker Compose, and a running Docker Desktop instance. Run the following commands from the project root in PowerShell.
+
+### 1. Install dependencies and configure services
+
+```powershell
+uv sync --python 3.12
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+npm --prefix frontend ci
 ```
 
-## 演示
+Edit `.env` with working model-service settings. API keys in the example file are empty.
 
-![智能客服问答：退货政策咨询、证据引用与处理记录](docs/screenshots/chat.png)
+| Settings | Purpose |
+| --- | --- |
+| `CHAT_BASE_URL`, `CHAT_MODEL`, `CHAT_API_KEY` | Model-driven conversations and Agent calls |
+| `EMBED_BASE_URL`, `EMBED_MODEL`, `EMBED_API_KEY` | Knowledge vectorization and vector retrieval |
+| `RERANK_BASE_URL`, `RERANK_MODEL`, `RERANK_API_KEY` | Retrieval reranking |
+| `DATABASE_URL` | Business database; defaults to MySQL on port 3307 |
+| `MILVUS_URI`, `MILVUS_COLLECTION` | Defaults: `http://localhost:19531`, `eshop_knowledge` |
+| `MCP_LOGISTICS_URL`, `MCP_AFTERSALES_URL` | Defaults: local ports 8111 and 8112, both at `/mcp` |
 
-智能客服问答页：左侧切换历史咨询，中间展示用户提问与客服回答，右侧查看问题理解、识别意图和处理路径。图中展示退货政策问答、证据引用角标，以及右侧的问题理解、意图识别和处理路径。订单物流查询未提供订单号时，先通过订单卡片点选，再查询对应订单。商品与政策咨询支持知识检索和证据引用，证据不足时给出人工协助入口。
+Browsing the workspace and demo business records does not require model keys. The complete AI question-answering flow requires chat, embedding, and reranking services, plus knowledge initialization.
 
-其余页面（售后工作台 / 知识运营 / 知识库）截图见 [docs/screenshots](docs/screenshots)，本地演示流程见 [docs/walkthrough.md](docs/walkthrough.md)，架构与关键决策见 [docs/architecture.md](docs/architecture.md)。
+### 2. Start infrastructure and seed demo data
 
-## 本地启动
+```powershell
+docker volume create eshop-assistant-mysql-data
+docker volume create eshop-assistant-milvus-data
+docker volume create eshop-assistant-milvus-etcd
+docker volume create eshop-assistant-milvus-minio
+docker compose up -d --wait --wait-timeout 180
+uv run python -m scripts.init_demo
+```
 
-已完成初始化后，打开 Docker Desktop，在项目根目录执行一条命令即可启动 Docker 依赖、两个 MCP 和 API：
+Compose uses named external volumes, which must exist before the first startup. Recreating an existing volume does not clear its data. Demo initialization preserves existing account passwords, orders, and processing records. Business data lives in MySQL; SQLite is used for checkpoints and isolated tests. Old SQLite demo records are not automatically imported into MySQL.
+
+### 3. Initialize the knowledge base
+
+After configuring the embedding service, run:
+
+```powershell
+uv run python -m scripts.build_kb
+uv run python -m scripts.vectorize_kb
+```
+
+The first command chunks documents from `data/kb/` and writes pending records to the business database. The second embeds pending chunks and indexes them in Milvus. Reranking is used during retrieval, not by the vectorization script.
+
+### 4. Build and launch the workspace
+
+```powershell
+npm --prefix frontend run build
+uv run python -m scripts.dev
+```
+
+Open the [local workspace](http://127.0.0.1:8010). The launcher waits for Docker dependencies, then starts the logistics MCP service, after-sales MCP service, and API. Logs are written to `data/runtime-logs/`.
+
+Ctrl+C stops only application processes started by this invocation. Docker and pre-existing processes remain running. Occupied MCP ports are reused without checking service identity; ensure ports 8111 and 8112 are not occupied by unrelated programs.
+
+## Daily development
+
+After initialization and the frontend build, start the application with:
 
 ```powershell
 uv run python -m scripts.dev
 ```
 
-访问 http://127.0.0.1:8010。Ctrl+C 停止本次启动的进程；已运行的进程与 Docker 保持运行。日志位于 `data/runtime-logs`。启动器检测到已占用的 MCP 端口时会保留现有服务，如端口被其他程序占用，需先处理冲突。此命令不安装依赖、不迁移数据、不构建知识库。
-
-需要 Python 3.12+ 和 Node.js 22。以下命令在项目根目录运行。
+The launcher does not install dependencies, initialize or migrate data, or build the frontend or knowledge base. Rebuild after frontend changes, or start the development server in another terminal:
 
 ```powershell
-uv sync --python 3.12
-Copy-Item .env.example .env
-docker volume create eshop-assistant-mysql-data
-docker volume create eshop-assistant-milvus-data
-docker volume create eshop-assistant-milvus-etcd
-docker volume create eshop-assistant-milvus-minio
-docker compose up -d
-uv run python -m scripts.init_demo
-npm --prefix frontend ci
-npm --prefix frontend run build
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8010
+npm --prefix frontend run dev
 ```
 
-已有 `.env` 时直接使用现有文件，不要执行覆盖命令。打开 [本地工作台](http://127.0.0.1:8010)。前端开发可另开终端运行 `npm --prefix frontend run dev`，Vite 将 `/api` 转发至 8010。
-
-默认业务数据库为 MySQL `eshop_assistant`，端口 3307。首次启动需等待 MySQL 健康后再初始化。Compose 使用显式命名的外部数据卷，重复执行上面的卷创建命令不会清空已有卷。初始化命令重复执行不会覆盖账号密码、订单或已有处理记录。SQLite 仅用于隔离测试及 LangGraph checkpoint；此前演示业务文件保留，不会自动导入 MySQL。
-
-演示账号：
-
-| 身份 | 邮箱 |
-| --- | --- |
-| 用户林悦 | lin@eshop.demo |
-| 用户周然 | zhou@eshop.demo |
-| 客服陈曦 | agent@eshop.demo |
-
-示例环境的演示密码是 `123456`。初次初始化时可修改 `DEMO_PASSWORD`；已存在账号的密码不会被重置。开启演示入口时，登录页点击任一演示身份会自动填入该邮箱与当前 `DEMO_PASSWORD`，再点一次「登录工作台」即可进入。`DEMO_ACCOUNTS_ENABLED=false` 隐藏演示身份入口，同时该接口不再回传密码。
-
-## 检索与独立 MCP 服务
-
-```powershell
-docker compose up -d
-uv run python -m scripts.build_kb
-uv run python -m scripts.vectorize_kb
-```
-
-向量化需要 `.env` 中的嵌入与重排配置。本机使用 `eshop_knowledge` 集合、Milvus 端口 19531，与其他环境隔离。聊天还需要 `CHAT_MODEL`、`CHAT_BASE_URL`、`CHAT_API_KEY`。
-
-分别在两个终端启动 MCP：
+Open the address printed by Vite. Requests to `/api` are proxied to port 8010. For individual service debugging, run each command in a separate terminal:
 
 ```powershell
 uv run python -m mcp_servers.logistics_server
 uv run python -m mcp_servers.aftersales_server
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
-两个服务默认绑定本机 8111、8112。物流、保修与售后查询读取本项目的固定订单和处理记录；它们是本地外部系统适配示例，没有连接真实物流或支付平台。模型调用这些工具前，由统一执行器验证订单或物流单号属于当前用户。
+## Demo accounts and walkthrough
 
-## LangSmith
+| Role | Email |
+| --- | --- |
+| Customer: 林悦 | `lin@eshop.demo` |
+| Customer: 周然 | `zhou@eshop.demo` |
+| Support agent: 陈曦 | `agent@eshop.demo` |
+
+The initial demo password in `.env.example` is `123456`. Set `DEMO_PASSWORD` before the first initialization to change it; updating the setting does not reset existing passwords. Demo account shortcuts return the demo password to the browser and fill the login form. Set `DEMO_ACCOUNTS_ENABLED=false` to disable these shortcuts and password disclosure. These settings and default database credentials are intended for local demos only.
+
+Suggested demo sequence:
+
+1. Sign in as 林悦, select an order, confirm an after-sales request, and view its pending status.
+2. Sign in as the support agent, inspect the request and order, add review notes, approve it, and record the outcome.
+3. Sign in as 周然 and verify that 林悦's orders, conversations, and requests cannot be accessed.
+4. With model and retrieval services configured, demonstrate citations, abstention, feedback collection, reviewed knowledge updates, and subsequent retrieval.
+
+See [walkthrough.md](docs/walkthrough.md) for detailed steps.
+
+## Verification and evaluation
+
+```powershell
+uv run python -m scripts.verify
+npm --prefix frontend run build
+```
+
+`scripts.verify` runs a selected business regression suite covering identity isolation, CSRF, repeated and concurrent submissions, status conflicts, MCP ownership checks, knowledge publishing retries, and checkpoint recovery. It does not establish that the full test suite or real external-service integrations pass.
+
+The full suite has known issues involving older API contracts, external-service dependencies, and asynchronous mocks. See [testing.md](docs/testing.md). Historical results recorded there are not results from the current run.
+
+The RAG evaluation entry point is `scripts/eval_rag.py`, with data in `tests/data/rag_eval.jsonl` and format checks in `scripts/validate_rag_dataset.py`. Measure retrieval quality with Milvus and model services available; this README makes no fixed accuracy claim. Reports are written to the corresponding directories under `data/reports/`; reruns may overwrite previous reports.
+
+## Optional: LangSmith
+
+Configure `.env` and restart the API:
 
 ```dotenv
 LANGSMITH_TRACING=true
@@ -117,38 +158,40 @@ LANGSMITH_WORKSPACE_ID=
 LANGSMITH_HIDE_INPUTS=true
 ```
 
-Agent 的 Local 环境对应追踪项目 `eshop-assistant-local`，项目名必须与网页环境对应；仅设置 Agent ID 和环境变量不替代此配置。密钥仅配置在后端。启用后重启 API，图调用与子调用通过 `thread_id` 元数据关联到同一会话；未启用或缺少密钥时，不影响业务运行。`LANGSMITH_ENDPOINT` 应匹配账号区域。
-
-默认隐藏 trace 输入；输出仍可能包含业务结果。云端追踪验收需要有效密钥和一次真实图调用，本地测试不能替代这个验收。
+Use the endpoint for your account region and keep keys on the backend. Traces are correlated through `thread_id`. Inputs are hidden by default, but outputs may still contain business data. Cloud tracing verification requires valid credentials and a real graph invocation.
 
 ```powershell
 uv run python -m scripts.cost_by_intent --days 7
 ```
 
-成本报表只统计根调用，避免重复计算子调用；数据来自当前 LangSmith 项目。
+The report reads root-run usage from the configured LangSmith project to avoid counting child runs twice.
 
-官方说明：[LangChain tracing](https://docs.langchain.com/langsmith/trace-with-langchain)、[会话关联](https://docs.langchain.com/langsmith/threads)。
+## Repository layout and documentation
 
-## 验证
-
-RAG 评估脚本为 `scripts/eval_rag.py`，数据集为 `tests/data/rag_eval.jsonl`（300 题，政策/型号/口语/库外/跨文档五类各 60 题）。数据格式检查入口为 `scripts/validate_rag_dataset.py`。
-
-运行报告分别输出至 `data/reports/rag/`、`data/reports/confidence/`、`data/reports/usage/` 和 `data/reports/knowledge/`，默认不提交 Git。报告只反映最近一次运行，重跑即覆盖。
-
-```powershell
-uv run python -m scripts.verify
-npm --prefix frontend run build
+```text
+app/api/         Authentication, conversation, order, after-sales, and knowledge APIs
+app/core/        Business rules, retrieval, knowledge publishing, and observability
+app/graph/       LangGraph state, routing, nodes, and recovery
+app/db/          SQLAlchemy models and database sessions
+app/tools/       Built-in tools, execution engine, and MCP client
+mcp_servers/     Local logistics and after-sales adapters
+frontend/src/   React pages, API client, and styles
+data/kb/        Sample knowledge documents
+scripts/        Initialization, development, regression, and evaluation scripts
+tests/          Business regression, unit, and integration tests
 ```
 
-回归集覆盖身份隔离、CSRF、重复与并发提交、状态版本冲突、MCP 越权拦截、知识发布失败重试、工具描述和真实 SQLite checkpoint 重新打开后的恢复。数据库测试使用独立临时文件，不清理演示库。
+- [Architecture and design](docs/architecture.md)
+- [Test status and limitations](docs/testing.md)
+- [Demo walkthrough](docs/walkthrough.md)
+- [Scope and roadmap](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)
 
-全仓测试中仍有一批早期用例按旧契约断言（未带登录态、依赖本机 MySQL/Milvus、对同步函数的 mock 与实现中的 `await` 不符），不在回归门内；判断当前版本是否健康以 `scripts/verify` 为准。检索指标需在 Milvus 与模型就绪后重跑，不沿用历史结果。
+These supporting documents are currently primarily in Chinese.
 
-## 演示顺序与边界
+## Current limitations
 
-1. 林悦选择订单，确认申请，进入「我的售后」查看待审核状态。
-2. 客服打开同一申请，核对订单、填写意见、批准，再记录处理结果。
-3. 周然登录，确认无法读取林悦的订单、会话和申请。
-4. 在配置检索服务后，演示拒答、反馈沉淀、审核补全、后续检索生效。
-
-售后「已处理」表示本地业务处理结束，不表示支付渠道已打款。当前 API 与 SQLite checkpoint 按单进程运行；跨进程并发恢复需要额外的共享会话锁。知识索引依靠稳定块 ID 和重试补偿，不宣称数据库与 Milvus 跨库强一致。
+- A completed after-sales request represents completion of the local workflow, not a real payment refund.
+- The application currently runs with one API worker. Concurrent checkpoint recovery across processes requires an additional shared conversation lock.
+- MySQL and Milvus coordinate through stable chunk IDs and retry compensation, without a cross-database strongly consistent transaction.
+- Model, embedding, reranking, cloud tracing, and MySQL end-to-end behavior require separate verification in the target environment.
